@@ -1,0 +1,77 @@
+name: Block 3 - Serie A player statistics
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 4 * * 2'
+
+jobs:
+  build-player-statistics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Configure environment
+        run: |
+          cat > .env <<'EOF'
+          FOOTBALL_DATA_API_KEY=${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_API_KEY=${{ secrets.API_FOOTBALL_API_KEY }}
+          THESPORTSDB_API_KEY=123
+          DATABASE_PATH=data/database-fantacalcio.sqlite
+          REQUEST_TIMEOUT_SECONDS=45
+          EOF
+
+      - name: Initialize database
+        run: python pipeline.py --init
+
+      - name: Run Block 1
+        run: python src/block_1_import_entities.py
+
+      - name: Run Block 2
+        run: python src/block_2_import_matches.py
+
+      - name: Run Block 3
+        run: python src/block_3_import_player_statistics.py
+
+      - name: Validate database
+        run: python pipeline.py --validate
+
+      - name: Create coverage report
+        run: |
+          python - <<'PY'
+          import json, sqlite3
+          db='data/database-fantacalcio.sqlite'
+          con=sqlite3.connect(db)
+          report={
+            'players': con.execute('SELECT COUNT(*) FROM players').fetchone()[0],
+            'clubs': con.execute('SELECT COUNT(*) FROM clubs').fetchone()[0],
+            'matches': con.execute('SELECT COUNT(*) FROM matches').fetchone()[0],
+            'player_match_statistics': con.execute('SELECT COUNT(*) FROM player_match_statistics_extended').fetchone()[0],
+            'player_season_statistics': con.execute('SELECT COUNT(*) FROM player_season_statistics_extended').fetchone()[0],
+            'completed_imports': con.execute("SELECT COUNT(*) FROM import_runs WHERE status='completed'").fetchone()[0],
+            'failed_imports': con.execute("SELECT COUNT(*) FROM import_runs WHERE status='failed'").fetchone()[0],
+          }
+          with open('data/block_3_coverage_report.json','w') as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: serie-a-fantacalcio-block-3
+          path: |
+            data/database-fantacalcio.sqlite
+            data/block_3_coverage_report.json
+          retention-days: 30
