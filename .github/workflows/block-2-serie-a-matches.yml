@@ -1,0 +1,36 @@
+name: Block 2 - Serie A matches
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import-matches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Initialize database
+        run: python pipeline.py --init
+      - name: Import Block 1 entities
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          DATABASE_PATH: data/database-fantacalcio.sqlite
+        run: python src/block_1_import_entities.py
+      - name: Import Block 2 matches
+        env:
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_API_KEY: ${{ secrets.API_FOOTBALL_API_KEY }}
+          DATABASE_PATH: data/database-fantacalcio.sqlite
+        run: python src/block_2_import_matches.py
+      - name: Upload populated database
+        uses: actions/upload-artifact@v4
+        with:
+          name: serie-a-fantacalcio-block-2
+          path: data/database-fantacalcio.sqlite
+          retention-days: 30
