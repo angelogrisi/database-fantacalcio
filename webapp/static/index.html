@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Database Fantacalcio</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">SERIE A · DATA HUB</p>
+      <h1>Database Fantacalcio</h1>
+      <p class="subtitle">Ricerca, confronta e analizza i giocatori delle ultime cinque stagioni.</p>
+    </div>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <main>
+    <section class="search-panel">
+      <div class="searchbox">
+        <span>⌕</span>
+        <input id="search" type="search" placeholder="Cerca un giocatore..." autocomplete="off">
+      </div>
+      <select id="season"><option value="">Tutte le stagioni</option></select>
+      <select id="club"><option value="">Tutti i club</option></select>
+      <select id="role">
+        <option value="">Tutti i ruoli</option>
+        <option value="Goalkeeper">Portieri</option>
+        <option value="Defence">Difensori</option>
+        <option value="Midfield">Centrocampisti</option>
+        <option value="Offence">Attaccanti</option>
+      </select>
+      <select id="sort">
+        <option value="name">Ordina per nome</option>
+        <option value="fantamedia">Fantamedia</option>
+        <option value="goals">Gol</option>
+        <option value="assists">Assist</option>
+        <option value="value">Valore asta</option>
+      </select>
+    </section>
+
+    <div class="content-grid">
+      <section>
+        <div class="section-head">
+          <h2>Giocatori</h2>
+          <span id="resultCount" class="muted"></span>
+        </div>
+        <div id="players" class="players-grid"></div>
+        <button id="loadMore" class="load-more" hidden>Carica altri</button>
+      </section>
+
+      <aside id="detail" class="detail-panel empty">
+        <div class="empty-state">
+          <div class="ball">⚽</div>
+          <h3>Seleziona un giocatore</h3>
+          <p>Visualizzerai statistiche, stagioni e giocatori simili.</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
