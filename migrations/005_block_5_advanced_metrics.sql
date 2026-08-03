@@ -1,0 +1,90 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS player_advanced_match_metrics (
+  id INTEGER PRIMARY KEY,
+  match_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  club_id TEXT NOT NULL,
+  xg REAL,
+  xa REAL,
+  xg_chain REAL,
+  xg_buildup REAL,
+  expected_threat REAL,
+  shots_in_box INTEGER,
+  touches_in_box INTEGER,
+  progressive_passes INTEGER,
+  progressive_carries INTEGER,
+  passes_into_final_third INTEGER,
+  carries_into_final_third INTEGER,
+  pressures INTEGER,
+  successful_pressures INTEGER,
+  shot_creating_actions INTEGER,
+  goal_creating_actions INTEGER,
+  source_quality REAL,
+  value_type TEXT NOT NULL DEFAULT 'observed' CHECK(value_type IN ('observed','calculated','estimated','manual')),
+  methodology_version TEXT,
+  UNIQUE(match_id, player_id),
+  FOREIGN KEY(match_id) REFERENCES matches(match_id),
+  FOREIGN KEY(player_id) REFERENCES players(player_id),
+  FOREIGN KEY(club_id) REFERENCES clubs(club_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_advanced_season_metrics (
+  id INTEGER PRIMARY KEY,
+  player_id TEXT NOT NULL,
+  season_id INTEGER NOT NULL,
+  club_id TEXT NOT NULL,
+  competition_id INTEGER NOT NULL,
+  minutes INTEGER DEFAULT 0,
+  xg REAL,
+  xa REAL,
+  xg_per90 REAL,
+  xa_per90 REAL,
+  xg_plus_xa_per90 REAL,
+  shots_in_box INTEGER,
+  touches_in_box INTEGER,
+  progressive_passes INTEGER,
+  progressive_carries INTEGER,
+  passes_into_final_third INTEGER,
+  carries_into_final_third INTEGER,
+  pressures INTEGER,
+  successful_pressures INTEGER,
+  pressure_success_pct REAL,
+  shot_creating_actions INTEGER,
+  goal_creating_actions INTEGER,
+  expected_threat REAL,
+  expected_threat_per90 REAL,
+  attacking_involvement_index REAL,
+  chance_creation_index REAL,
+  progression_index REAL,
+  pressing_index REAL,
+  data_coverage_pct REAL,
+  source_quality REAL,
+  methodology_version TEXT NOT NULL,
+  UNIQUE(player_id, season_id, club_id, competition_id, methodology_version),
+  FOREIGN KEY(player_id) REFERENCES players(player_id),
+  FOREIGN KEY(season_id) REFERENCES seasons(season_id),
+  FOREIGN KEY(club_id) REFERENCES clubs(club_id),
+  FOREIGN KEY(competition_id) REFERENCES competitions(competition_id)
+);
+
+CREATE TABLE IF NOT EXISTS player_heatmap_cells (
+  id INTEGER PRIMARY KEY,
+  player_id TEXT NOT NULL,
+  season_id INTEGER NOT NULL,
+  match_id TEXT,
+  zone_x INTEGER NOT NULL,
+  zone_y INTEGER NOT NULL,
+  touches INTEGER NOT NULL DEFAULT 0,
+  actions INTEGER NOT NULL DEFAULT 0,
+  source_quality REAL,
+  value_type TEXT NOT NULL DEFAULT 'observed' CHECK(value_type IN ('observed','calculated','estimated','manual')),
+  UNIQUE(player_id, season_id, match_id, zone_x, zone_y),
+  FOREIGN KEY(player_id) REFERENCES players(player_id),
+  FOREIGN KEY(season_id) REFERENCES seasons(season_id),
+  FOREIGN KEY(match_id) REFERENCES matches(match_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_adv_match_player ON player_advanced_match_metrics(player_id, match_id);
+CREATE INDEX IF NOT EXISTS idx_adv_season_player ON player_advanced_season_metrics(player_id, season_id);
+CREATE INDEX IF NOT EXISTS idx_heatmap_player_season ON player_heatmap_cells(player_id, season_id);
