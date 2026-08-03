@@ -1,0 +1,19 @@
+{
+  "project_name": "Database Fantacalcio",
+  "seasons": ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"],
+  "priority_competitions": ["Serie A", "Premier League", "La Liga", "Bundesliga", "Ligue 1"],
+  "secondary_competitions": ["Eredivisie", "Primeira Liga", "Championship", "MLS", "Saudi Pro League", "Brasileirao", "Liga Profesional Argentina", "J League", "K League", "UEFA competitions", "Senior national teams"],
+  "sources": {
+    "football_data": {"enabled": true, "requires_private_key": true},
+    "api_football": {"enabled": true, "requires_private_key": true},
+    "statsbomb_open_data": {"enabled": true, "repository": "https://github.com/hudl/open-data"},
+    "thesportsdb": {"enabled": true, "api_version": "v1", "free_key": "123"}
+  },
+  "rules": {
+    "never_invent_missing_data": true,
+    "required_provenance": true,
+    "permanent_player_id": true,
+    "estimated_values_must_be_flagged": true,
+    "raw_provider_payload_retention": true
+  }
+}
