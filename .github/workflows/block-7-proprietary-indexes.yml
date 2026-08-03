@@ -1,0 +1,40 @@
+name: Block 7 - Serie A proprietary indexes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      API_FOOTBALL_API_KEY: ${{ secrets.API_FOOTBALL_API_KEY }}
+      THESPORTSDB_API_KEY: '123'
+      DATABASE_PATH: data/database-fantacalcio.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Run previous blocks
+        run: |
+          python pipeline.py --init
+          python src/block_1_import_entities.py
+          python src/block_2_import_matches.py
+          python src/block_3_import_player_statistics.py
+          python src/block_4_build_fantasy_metrics.py
+          python src/block_5_build_advanced_metrics.py
+          python src/block_6_import_injuries_transfers.py
+      - name: Build proprietary indexes and similarity
+        run: python src/block_7_build_proprietary_indexes.py
+      - name: Validate database
+        run: python pipeline.py --validate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serie-a-fantacalcio-block-7
+          path: |
+            data/database-fantacalcio.sqlite
+            reports/block_7_coverage_report.json
+          if-no-files-found: error
+          retention-days: 30
