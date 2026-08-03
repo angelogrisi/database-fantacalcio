@@ -1,0 +1,38 @@
+name: Block 4 - Serie A fantasy metrics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Prepare environment
+        run: |
+          mkdir -p data reports
+          echo "FOOTBALL_DATA_API_KEY=${{ secrets.FOOTBALL_DATA_API_KEY }}" >> .env
+          echo "API_FOOTBALL_API_KEY=${{ secrets.API_FOOTBALL_API_KEY }}" >> .env
+          echo "THESPORTSDB_API_KEY=123" >> .env
+          echo "DATABASE_PATH=data/database-fantacalcio.sqlite" >> .env
+      - name: Block 1
+        run: python src/block_1_import_entities.py
+      - name: Block 2
+        run: python src/block_2_import_matches.py
+      - name: Block 3
+        run: python src/block_3_import_player_statistics.py
+      - name: Block 4
+        run: python src/block_4_build_fantasy_metrics.py
+      - name: Validate
+        run: python pipeline.py --validate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serie-a-fantacalcio-block-4
+          path: |
+            data/database-fantacalcio.sqlite
+            reports/block_4_coverage_report.json
+          if-no-files-found: error
