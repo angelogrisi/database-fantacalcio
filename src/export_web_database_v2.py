@@ -1,121 +1,137 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 import json, os, sqlite3
 from pathlib import Path
 
-root = Path(__file__).resolve().parents[1]
-db_path = Path(os.getenv('DATABASE_PATH', root / 'data' / 'database-fantacalcio.sqlite'))
-out_path = Path(os.getenv('WEB_DATA_PATH', root / 'pages' / 'data' / 'database.json'))
+ROOT=Path(__file__).resolve().parents[1]
+DB=Path(os.getenv('DATABASE_PATH',ROOT/'data/database-fantacalcio.sqlite'))
+OUT=Path(os.getenv('WEB_DATA_PATH',ROOT/'pages/data/database.json'))
+con=sqlite3.connect(DB); con.row_factory=sqlite3.Row
 
-con = sqlite3.connect(db_path)
-con.row_factory = sqlite3.Row
+def has(t):return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone() is not None
+def cols(t):return {r[1] for r in con.execute(f'PRAGMA table_info({t})')} if has(t) else set()
+def c(a,t,n,default='NULL'):return f'{a}.{n}' if n in cols(t) else default
+def co(*values):return 'COALESCE('+','.join(values)+')'
 
-def has_table(name):
-    return con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+joins=[
+ 'LEFT JOIN player_seasons ps ON ps.player_id=p.player_id',
+ 'LEFT JOIN seasons s ON s.season_id=ps.season_id',
+ 'LEFT JOIN clubs club ON club.club_id=ps.club_id',
+ 'LEFT JOIN player_season_stats core ON core.player_id=p.player_id AND core.season_id=ps.season_id AND core.club_id=ps.club_id AND core.competition_id=ps.competition_id'
+]
 
-def cols(name):
-    return {r[1] for r in con.execute(f'PRAGMA table_info({name})')} if has_table(name) else set()
+if has('player_season_statistics_extended'):
+    joins.append('''LEFT JOIN (
+      SELECT * FROM (
+        SELECT x.*,ROW_NUMBER() OVER(
+          PARTITION BY player_id,season_id,club_id,competition_id
+          ORDER BY CASE source_name WHEN 'API-Football' THEN 1 WHEN 'Kaggle-FBref' THEN 2 ELSE 9 END
+        ) AS provider_rank
+        FROM player_season_statistics_extended x
+      ) WHERE provider_rank=1
+    ) ext ON ext.player_id=p.player_id AND ext.season_id=ps.season_id AND ext.club_id=ps.club_id AND ext.competition_id=ps.competition_id''')
 
-def field(alias, table, name, fallback='NULL'):
-    return f'{alias}.{name}' if name in cols(table) else fallback
-
-joins = []
-joins.append('LEFT JOIN player_seasons ps ON ps.player_id=p.player_id')
-joins.append('LEFT JOIN seasons s ON s.season_id=ps.season_id')
-joins.append('LEFT JOIN clubs c ON c.club_id=ps.club_id')
-
-mapping = [
- ('player_season_statistics_extended','st','st.player_id=p.player_id AND st.season_id=ps.season_id AND st.club_id=ps.club_id'),
- ('fantasy_player_season','fm','fm.player_id=p.player_id AND fm.season_id=ps.season_id AND fm.club_id=ps.club_id'),
- ('player_advanced_season_metrics','am','am.player_id=p.player_id AND am.season_id=ps.season_id AND am.club_id=ps.club_id'),
- ('proprietary_player_indexes','pi','pi.player_id=p.player_id AND pi.season_id=ps.season_id AND pi.club_id=ps.club_id'),
- ('player_availability','av','av.player_id=p.player_id AND av.season_id=ps.season_id AND av.club_id=ps.club_id'),
- ('player_lineup_readiness','lr','lr.player_id=p.player_id AND lr.season_id=ps.season_id AND lr.club_id=ps.club_id'),
- ('fantasy_recommendations','fr','fr.player_id=p.player_id AND fr.season_id=ps.season_id AND fr.club_id=ps.club_id'),
- ('auction_values','au','au.player_id=p.player_id AND au.season_id=ps.season_id AND au.club_id=ps.club_id'),
- ('season_simulations','ss','ss.player_id=p.player_id AND ss.season_id=ps.season_id AND ss.club_id=ps.club_id'),
+optional=[
+ ('fantasy_player_season','fm','fm.player_id=p.player_id AND fm.season_id=ps.season_id AND fm.club_id=ps.club_id AND fm.competition_id=ps.competition_id AND fm.ruleset_id=1'),
+ ('player_advanced_season_metrics','adv','adv.player_id=p.player_id AND adv.season_id=ps.season_id AND adv.club_id=ps.club_id AND adv.competition_id=ps.competition_id'),
+ ('proprietary_player_indexes','idx','idx.player_id=p.player_id AND idx.season_id=ps.season_id AND idx.club_id=ps.club_id'),
+ ('player_availability','avail','avail.player_id=p.player_id AND avail.season_id=ps.season_id AND avail.club_id=ps.club_id'),
+ ('player_lineup_readiness','lineup','lineup.player_id=p.player_id AND lineup.season_id=ps.season_id AND lineup.club_id=ps.club_id'),
+ ('fantasy_recommendations','rec','rec.player_id=p.player_id AND rec.season_id=ps.season_id AND rec.club_id=ps.club_id'),
+ ('auction_values','auction','auction.player_id=p.player_id AND auction.season_id=ps.season_id AND auction.club_id=ps.club_id'),
+ ('season_simulations','sim','sim.player_id=p.player_id AND sim.season_id=ps.season_id AND sim.club_id=ps.club_id'),
  ('ai_player_predictions','ai','ai.player_id=p.player_id AND ai.season_id=ps.season_id AND ai.club_id=ps.club_id')
 ]
-for table, alias, on in mapping:
-    if has_table(table): joins.append(f'LEFT JOIN {table} {alias} ON {on}')
+for t,a,on in optional:
+    if has(t):joins.append(f'LEFT JOIN {t} {a} ON {on}')
 
-fields = [
- field('p','players','player_id')+' player_id',
- field('p','players','full_name',"''")+' name',
- field('p','players','nationality')+' nationality',
- field('p','players','primary_position',field('p','players','position'))+' position',
- field('s','seasons','label')+' season',
- field('c','clubs','official_name')+' club',
- field('fm','fantasy_player_season','fantasy_role')+' fantasy_role',
- field('st','player_season_statistics_extended','appearances','0')+' appearances',
- field('st','player_season_statistics_extended','starts','0')+' starts',
- field('st','player_season_statistics_extended','minutes','0')+' minutes',
- field('st','player_season_statistics_extended','avg_rating')+' average_rating',
- field('st','player_season_statistics_extended','goals','0')+' goals',
- field('st','player_season_statistics_extended','assists','0')+' assists',
- field('st','player_season_statistics_extended','shots_total')+' shots',
- field('st','player_season_statistics_extended','shots_on_target')+' shots_on_target',
- field('st','player_season_statistics_extended','passes_total')+' passes',
- field('st','player_season_statistics_extended','passes_key')+' key_passes',
- field('st','player_season_statistics_extended','pass_accuracy_pct')+' pass_accuracy',
- field('st','player_season_statistics_extended','tackles_total')+' tackles',
- field('st','player_season_statistics_extended','interceptions')+' interceptions',
- field('st','player_season_statistics_extended','yellow_cards')+' yellow_cards',
- field('st','player_season_statistics_extended','red_cards')+' red_cards',
- field('fm','fantasy_player_season','fantasy_average')+' fantasy_average',
- field('fm','fantasy_player_season','total_fantasy_points')+' fantasy_points',
- field('am','player_advanced_season_metrics','xg')+' xg',
- field('am','player_advanced_season_metrics','xa')+' xa',
- field('am','player_advanced_season_metrics','xg_per90')+' xg_per90',
- field('am','player_advanced_season_metrics','xa_per90')+' xa_per90',
- field('am','player_advanced_season_metrics','progressive_passes')+' progressive_passes',
- field('am','player_advanced_season_metrics','progressive_carries')+' progressive_carries',
- field('pi','proprietary_player_indexes','form_index')+' form_index',
- field('pi','proprietary_player_indexes','reliability_index')+' reliability_index',
- field('pi','proprietary_player_indexes','continuity_index')+' continuity_index',
- field('pi','proprietary_player_indexes','auction_value_index')+' auction_value',
- field('pi','proprietary_player_indexes','bonus_index')+' bonus_index',
- field('pi','proprietary_player_indexes','malus_risk')+' malus_risk',
- field('av','player_availability','availability_pct')+' availability_pct',
- field('av','player_availability','injury_risk_index')+' injury_risk',
- field('lr','player_lineup_readiness','starter_probability')+' starter_probability',
- field('lr','player_lineup_readiness','appearance_probability')+' appearance_probability',
- field('lr','player_lineup_readiness','expected_minutes')+' expected_minutes',
- field('lr','player_lineup_readiness','lineup_status')+' lineup_status',
- field('fr','fantasy_recommendations','recommendation_score')+' recommendation_score',
- field('fr','fantasy_recommendations','predicted_rating')+' predicted_rating',
- field('fr','fantasy_recommendations','predicted_fantasy_score')+' predicted_fantasy_score',
- field('fr','fantasy_recommendations','recommendation')+' recommendation',
- field('fr','fantasy_recommendations','explanation')+' recommendation_explanation',
- field('au','auction_values','budget_500_value')+' budget_500_value',
- field('au','auction_values','budget_1000_value')+' budget_1000_value',
- field('au','auction_values','value_tier')+' value_tier',
- field('ss','season_simulations','expected_goals')+' expected_goals',
- field('ss','season_simulations','expected_assists')+' expected_assists',
- field('ss','season_simulations','expected_fantasy_points')+' expected_fantasy_points',
- field('ss','season_simulations','breakout_probability')+' breakout_probability',
- field('ss','season_simulations','flop_probability')+' flop_probability',
- field('ai','ai_player_predictions','predicted_rating')+' ai_predicted_rating',
- field('ai','ai_player_predictions','goal_probability')+' goal_probability',
- field('ai','ai_player_predictions','assist_probability')+' assist_probability',
- field('ai','ai_player_predictions','yellow_probability')+' yellow_probability',
- field('ai','ai_player_predictions','clean_sheet_probability')+' clean_sheet_probability',
- field('ai','ai_player_predictions','explosion_index')+' explosion_index',
- field('ai','ai_player_predictions','flop_index')+' ai_flop_index'
+fields=[
+ c('p','players','player_id')+' AS player_id',
+ c('p','players','full_name',"''")+' AS name',
+ c('p','players','nationality')+' AS nationality',
+ c('p','players','primary_position')+' AS position',
+ c('p','players','photo_url')+' AS photo_url',
+ c('s','seasons','label')+' AS season',
+ c('club','clubs','official_name')+' AS club',
+ c('club','clubs','crest_url')+' AS club_crest',
+ c('fm','fantasy_player_season','fantasy_role')+' AS fantasy_role',
+ co(c('ext','player_season_statistics_extended','appearances'),c('core','player_season_stats','appearances','0'))+' AS appearances',
+ co(c('ext','player_season_statistics_extended','starts'),c('core','player_season_stats','starts','0'))+' AS starts',
+ co(c('ext','player_season_statistics_extended','minutes'),c('core','player_season_stats','minutes','0'))+' AS minutes',
+ c('ext','player_season_statistics_extended','avg_rating')+' AS average_rating',
+ co(c('ext','player_season_statistics_extended','goals'),c('core','player_season_stats','goals','0'))+' AS goals',
+ co(c('ext','player_season_statistics_extended','assists'),c('core','player_season_stats','assists','0'))+' AS assists',
+ co(c('ext','player_season_statistics_extended','shots_total'),c('core','player_season_stats','shots'))+' AS shots',
+ co(c('ext','player_season_statistics_extended','shots_on_target'),c('core','player_season_stats','shots_on_target'))+' AS shots_on_target',
+ c('ext','player_season_statistics_extended','passes_total')+' AS passes',
+ co(c('ext','player_season_statistics_extended','passes_key'),c('core','player_season_stats','key_passes'))+' AS key_passes',
+ co(c('ext','player_season_statistics_extended','pass_accuracy_pct'),c('core','player_season_stats','pass_accuracy'))+' AS pass_accuracy',
+ co(c('ext','player_season_statistics_extended','tackles_total'),c('core','player_season_stats','tackles'))+' AS tackles',
+ co(c('ext','player_season_statistics_extended','interceptions'),c('core','player_season_stats','interceptions'))+' AS interceptions',
+ co(c('ext','player_season_statistics_extended','yellow_cards'),c('core','player_season_stats','yellow_cards','0'))+' AS yellow_cards',
+ co(c('ext','player_season_statistics_extended','red_cards'),c('core','player_season_stats','red_cards','0'))+' AS red_cards',
+ c('fm','fantasy_player_season','fantasy_average')+' AS fantasy_average',
+ c('fm','fantasy_player_season','total_fantasy_points')+' AS fantasy_points',
+ co(c('adv','player_advanced_season_metrics','xg'),c('core','player_season_stats','xg'))+' AS xg',
+ co(c('adv','player_advanced_season_metrics','xa'),c('core','player_season_stats','xa'))+' AS xa',
+ co(c('adv','player_advanced_season_metrics','xg_per90'),c('core','player_season_stats','xg_per90'))+' AS xg_per90',
+ co(c('adv','player_advanced_season_metrics','xa_per90'),c('core','player_season_stats','xa_per90'))+' AS xa_per90',
+ co(c('adv','player_advanced_season_metrics','progressive_passes'),c('core','player_season_stats','progressive_passes'))+' AS progressive_passes',
+ co(c('adv','player_advanced_season_metrics','progressive_carries'),c('core','player_season_stats','progressive_carries'))+' AS progressive_carries',
+ c('idx','proprietary_player_indexes','form_index')+' AS form_index',
+ c('idx','proprietary_player_indexes','reliability_index')+' AS reliability_index',
+ c('idx','proprietary_player_indexes','continuity_index')+' AS continuity_index',
+ co(c('idx','proprietary_player_indexes','auction_value_index'),c('fm','fantasy_player_season','auction_value_index'))+' AS auction_value',
+ c('idx','proprietary_player_indexes','bonus_index')+' AS bonus_index',
+ c('idx','proprietary_player_indexes','malus_risk')+' AS malus_risk',
+ c('avail','player_availability','availability_pct')+' AS availability_pct',
+ c('avail','player_availability','injury_risk_index')+' AS injury_risk',
+ c('lineup','player_lineup_readiness','starter_probability')+' AS starter_probability',
+ c('lineup','player_lineup_readiness','appearance_probability')+' AS appearance_probability',
+ c('lineup','player_lineup_readiness','expected_minutes')+' AS expected_minutes',
+ c('lineup','player_lineup_readiness','lineup_status')+' AS lineup_status',
+ c('rec','fantasy_recommendations','recommendation_score')+' AS recommendation_score',
+ c('rec','fantasy_recommendations','predicted_rating')+' AS predicted_rating',
+ c('rec','fantasy_recommendations','predicted_fantasy_score')+' AS predicted_fantasy_score',
+ c('rec','fantasy_recommendations','recommendation')+' AS recommendation',
+ c('rec','fantasy_recommendations','explanation')+' AS recommendation_explanation',
+ c('auction','auction_values','budget_500_value')+' AS budget_500_value',
+ c('auction','auction_values','budget_1000_value')+' AS budget_1000_value',
+ c('auction','auction_values','value_tier')+' AS value_tier',
+ c('sim','season_simulations','expected_goals')+' AS expected_goals',
+ c('sim','season_simulations','expected_assists')+' AS expected_assists',
+ c('sim','season_simulations','expected_fantasy_points')+' AS expected_fantasy_points',
+ c('sim','season_simulations','breakout_probability')+' AS breakout_probability',
+ c('sim','season_simulations','flop_probability')+' AS flop_probability',
+ c('ai','ai_player_predictions','predicted_rating')+' AS ai_predicted_rating',
+ c('ai','ai_player_predictions','goal_probability')+' AS goal_probability',
+ c('ai','ai_player_predictions','assist_probability')+' AS assist_probability',
+ c('ai','ai_player_predictions','yellow_probability')+' AS yellow_probability',
+ c('ai','ai_player_predictions','clean_sheet_probability')+' AS clean_sheet_probability',
+ c('ai','ai_player_predictions','explosion_index')+' AS explosion_index',
+ c('ai','ai_player_predictions','flop_index')+' AS ai_flop_index',
+ c('ext','player_season_statistics_extended','source_name',"CASE WHEN core.id IS NOT NULL THEN 'season-dataset' END")+' AS data_source',
+ c('fm','fantasy_player_season','data_quality')+' AS data_quality'
 ]
 
-sql = 'SELECT '+','.join(fields)+' FROM players p '+' '.join(joins)
-rows = [dict(r) for r in con.execute(sql)]
-unique = {(r.get('player_id'),r.get('season'),r.get('club')):r for r in rows}
-rows = list(unique.values())
-summary = {
- 'players': con.execute('SELECT COUNT(*) FROM players').fetchone()[0],
- 'clubs': con.execute('SELECT COUNT(*) FROM clubs').fetchone()[0] if has_table('clubs') else 0,
- 'matches': con.execute('SELECT COUNT(*) FROM matches').fetchone()[0] if has_table('matches') else 0,
- 'records': len(rows),
- 'stats_records': con.execute('SELECT COUNT(*) FROM player_season_statistics_extended').fetchone()[0] if has_table('player_season_statistics_extended') else 0,
- 'fantasy_records': con.execute('SELECT COUNT(*) FROM fantasy_player_season').fetchone()[0] if has_table('fantasy_player_season') else 0,
- 'prediction_records': con.execute('SELECT COUNT(*) FROM ai_player_predictions').fetchone()[0] if has_table('ai_player_predictions') else 0
+rows=[dict(r) for r in con.execute('SELECT '+','.join(fields)+' FROM players p '+' '.join(joins))]
+# Keep one row for each real player-season-club and prefer populated statistics.
+def score(r):return sum(r.get(k) not in (None,'') for k in ('appearances','minutes','goals','assists','xg','xa','data_source'))
+unique={}
+for r in rows:
+    key=(r.get('player_id'),r.get('season'),r.get('club'))
+    if key not in unique or score(r)>score(unique[key]):unique[key]=r
+rows=list(unique.values())
+summary={
+ 'players':con.execute('SELECT COUNT(*) FROM players').fetchone()[0],
+ 'clubs':con.execute('SELECT COUNT(*) FROM clubs').fetchone()[0] if has('clubs') else 0,
+ 'matches':con.execute('SELECT COUNT(*) FROM matches').fetchone()[0] if has('matches') else 0,
+ 'records':len(rows),
+ 'stats_records':con.execute('SELECT COUNT(*) FROM player_season_stats WHERE appearances IS NOT NULL').fetchone()[0],
+ 'fantasy_records':con.execute('SELECT COUNT(*) FROM fantasy_player_season').fetchone()[0] if has('fantasy_player_season') else 0,
+ 'prediction_records':con.execute('SELECT COUNT(*) FROM ai_player_predictions').fetchone()[0] if has('ai_player_predictions') else 0,
+ 'kaggle_records':con.execute("SELECT COUNT(*) FROM player_season_statistics_extended WHERE source_name='Kaggle-FBref'").fetchone()[0] if has('player_season_statistics_extended') else 0
 }
-out_path.parent.mkdir(parents=True, exist_ok=True)
-out_path.write_text(json.dumps({'summary':summary,'players':rows},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
-print(json.dumps(summary,indent=2,ensure_ascii=False))
+OUT.parent.mkdir(parents=True,exist_ok=True)
+OUT.write_text(json.dumps({'summary':summary,'players':rows},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+con.close();print(json.dumps(summary,indent=2,ensure_ascii=False))
