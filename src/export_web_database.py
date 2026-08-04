@@ -1,57 +1,121 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, os, sqlite3
+
+import json
+import os
+import sqlite3
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
-DB=Path(os.getenv('DATABASE_PATH',ROOT/'data'/'database-fantacalcio.sqlite'))
-OUT=Path(os.getenv('WEB_DATA_PATH',ROOT/'pages'/'data'/'database.json'))
+ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = Path(os.getenv("DATABASE_PATH", ROOT / "data" / "database-fantacalcio.sqlite"))
+OUT_PATH = Path(os.getenv("WEB_DATA_PATH", ROOT / "pages" / "data" / "database.json"))
 
-def tables(con): return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-def cols(con,t): return {r[1] for r in con.execute(f'PRAGMA table_info({t})')}
-def expr(alias,column,default='NULL'):
-    return f'{alias}.{column}' if column in COLUMN_MAP.get(alias,set()) else default
 
-def main():
-    if not DB.exists(): raise SystemExit(f'Database non trovato: {DB}')
-    con=sqlite3.connect(DB); con.row_factory=sqlite3.Row
-    ts=tables(con)
-    global COLUMN_MAP
-    COLUMN_MAP={}
-    aliases={'p':'players','ps':'player_seasons','s':'seasons','c':'clubs','st':'player_season_stats','fm':'fantasy_season_metrics','am':'advanced_player_metrics','pi':'proprietary_player_indexes'}
-    for a,t in aliases.items(): COLUMN_MAP[a]=cols(con,t) if t in ts else set()
+def table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
 
-    joins=[]
-    base='players p'
-    if 'player_seasons' in ts: joins.append('LEFT JOIN player_seasons ps ON ps.player_id=p.player_id')
-    if 'seasons' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN seasons s ON s.season_id=ps.season_id')
-    if 'clubs' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN clubs c ON c.club_id=ps.club_id')
-    if 'player_season_stats' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN player_season_stats st ON st.player_id=p.player_id AND st.season_id=ps.season_id AND st.club_id=ps.club_id')
-    if 'fantasy_season_metrics' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN fantasy_season_metrics fm ON fm.player_id=p.player_id AND fm.season_id=ps.season_id AND fm.club_id=ps.club_id')
-    if 'advanced_player_metrics' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN advanced_player_metrics am ON am.player_id=p.player_id AND am.season_id=ps.season_id')
-    if 'proprietary_player_indexes' in ts and 'player_seasons' in ts: joins.append('LEFT JOIN proprietary_player_indexes pi ON pi.player_id=p.player_id AND pi.season_id=ps.season_id')
 
-    select=[
-      f"{expr('p','player_id')} player_id",f"{expr('p','full_name',"''")} name",f"{expr('p','nationality')} nationality",f"{expr('p','primary_position',expr('p','position'))} position",
-      f"{expr('s','label')} season",f"{expr('c','official_name')} club",f"{expr('fm','fantasy_role')} fantasy_role",
-      f"{expr('st','appearances',expr('fm','appearances_with_rating','0'))} appearances",f"{expr('st','minutes','0')} minutes",f"{expr('st','goals','0')} goals",f"{expr('st','assists','0')} assists",
-      f"{expr('fm','average_rating')} average_rating",f"{expr('fm','fantasy_average')} fantasy_average",f"{expr('fm','auction_value_index',expr('pi','auction_value'))} auction_value",
-      f"{expr('st','xg',expr('am','xg'))} xg",f"{expr('st','xa',expr('am','xa'))} xa",f"{expr('pi','form_index')} form_index",f"{expr('pi','reliability_index')} reliability_index"
-    ]
-    sql='SELECT '+','.join(select)+' FROM '+base+' '+' '.join(joins)
-    rows=[dict(r) for r in con.execute(sql)]
-    # remove exact duplicate player-season-club rows
-    unique={}
-    for r in rows: unique[(r.get('player_id'),r.get('season'),r.get('club'))]=r
-    rows=list(unique.values())
-    summary={
-      'players': con.execute('SELECT COUNT(*) FROM players').fetchone()[0],
-      'clubs': con.execute('SELECT COUNT(*) FROM clubs').fetchone()[0] if 'clubs' in ts else 0,
-      'matches': con.execute('SELECT COUNT(*) FROM matches').fetchone()[0] if 'matches' in ts else 0,
-      'records': len(rows)
+def columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    if not table_exists(conn, table):
+        return set()
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def col(alias: str, name: str, available: dict[str, set[str]], fallback: str = "NULL") -> str:
+    return f"{alias}.{name}" if name in available.get(alias, set()) else fallback
+
+
+def main() -> None:
+    if not DB_PATH.exists():
+        raise SystemExit(f"Database non trovato: {DB_PATH}")
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+
+    tables = {
+        "p": "players",
+        "ps": "player_seasons",
+        "s": "seasons",
+        "c": "clubs",
+        "st": "player_season_stats",
+        "fp": "fantasy_player_season",
+        "am": "player_advanced_season_metrics",
+        "pi": "proprietary_player_indexes",
     }
-    OUT.parent.mkdir(parents=True,exist_ok=True)
-    OUT.write_text(json.dumps({'summary':summary,'players':rows},ensure_ascii=False,separators=(',',':')),encoding='utf-8')
-    print(f'Esportati {len(rows)} record in {OUT}')
+    available = {alias: columns(conn, table) for alias, table in tables.items()}
 
-if __name__=='__main__': main()
+    if not available["p"]:
+        raise SystemExit("Tabella players non trovata")
+
+    joins: list[str] = []
+    if available["ps"]:
+        joins.append("LEFT JOIN player_seasons ps ON ps.player_id = p.player_id")
+    if available["s"] and available["ps"]:
+        joins.append("LEFT JOIN seasons s ON s.season_id = ps.season_id")
+    if available["c"] and available["ps"]:
+        joins.append("LEFT JOIN clubs c ON c.club_id = ps.club_id")
+    if available["st"] and available["ps"]:
+        joins.append("LEFT JOIN player_season_stats st ON st.player_id = ps.player_id AND st.season_id = ps.season_id AND st.club_id = ps.club_id")
+    if available["fp"] and available["ps"]:
+        joins.append("LEFT JOIN fantasy_player_season fp ON fp.player_id = ps.player_id AND fp.season_id = ps.season_id AND fp.club_id = ps.club_id")
+    if available["am"] and available["ps"]:
+        joins.append("LEFT JOIN player_advanced_season_metrics am ON am.player_id = ps.player_id AND am.season_id = ps.season_id AND am.club_id = ps.club_id")
+    if available["pi"] and available["ps"]:
+        joins.append("LEFT JOIN proprietary_player_indexes pi ON pi.player_id = ps.player_id AND pi.season_id = ps.season_id AND pi.club_id = ps.club_id")
+
+    full_name = col("p", "full_name", available, "''")
+    position = col("p", "primary_position", available, col("p", "position", available))
+    appearances = col("st", "appearances", available, col("fp", "appearances_with_rating", available, "0"))
+
+    select = [
+        f"{col('p', 'player_id', available)} AS player_id",
+        f"{full_name} AS name",
+        f"{col('p', 'nationality', available)} AS nationality",
+        f"{position} AS position",
+        f"{col('s', 'label', available)} AS season",
+        f"{col('c', 'official_name', available)} AS club",
+        f"{col('fp', 'fantasy_role', available)} AS fantasy_role",
+        f"{appearances} AS appearances",
+        f"{col('st', 'minutes', available, '0')} AS minutes",
+        f"{col('st', 'goals', available, col('fp', 'goals', available, '0'))} AS goals",
+        f"{col('st', 'assists', available, col('fp', 'assists', available, '0'))} AS assists",
+        f"{col('fp', 'average_rating', available)} AS average_rating",
+        f"{col('fp', 'fantasy_average', available)} AS fantasy_average",
+        f"{col('fp', 'auction_value_index', available, col('pi', 'auction_value_index', available))} AS auction_value",
+        f"{col('am', 'xg', available)} AS xg",
+        f"{col('am', 'xa', available)} AS xa",
+        f"{col('pi', 'form_index', available)} AS form_index",
+        f"{col('pi', 'reliability_index', available)} AS reliability_index",
+        f"{col('pi', 'continuity_index', available)} AS continuity_index",
+        f"{col('pi', 'bonus_index', available)} AS bonus_index",
+        f"{col('pi', 'injury_risk', available)} AS injury_risk",
+    ]
+
+    sql = "SELECT " + ", ".join(select) + " FROM players p " + " ".join(joins)
+    rows = [dict(row) for row in conn.execute(sql)]
+
+    unique: dict[tuple[object, object, object], dict] = {}
+    for row in rows:
+        unique[(row.get("player_id"), row.get("season"), row.get("club"))] = row
+    players = list(unique.values())
+
+    summary = {
+        "players": conn.execute("SELECT COUNT(*) FROM players").fetchone()[0],
+        "clubs": conn.execute("SELECT COUNT(*) FROM clubs").fetchone()[0] if table_exists(conn, "clubs") else 0,
+        "matches": conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0] if table_exists(conn, "matches") else 0,
+        "records": len(players),
+    }
+
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUT_PATH.write_text(
+        json.dumps({"summary": summary, "players": players}, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    print(f"Esportati {len(players)} record in {OUT_PATH}")
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()
