@@ -1,0 +1,71 @@
+name: Build complete Serie A database
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_PATH: data/database-fantacalcio.sqlite
+      FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      API_FOOTBALL_API_KEY: ${{ secrets.API_FOOTBALL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Initialize clean database
+        run: |
+          rm -f "$DATABASE_PATH"
+          mkdir -p data reports
+          python pipeline.py --init
+
+      - name: Block 1 - clubs and players
+        run: python src/block_1_import_entities.py
+
+      - name: Block 2 - matches
+        if: ${{ secrets.FOOTBALL_DATA_API_KEY != '' }}
+        run: python src/block_2_import_matches.py
+
+      - name: Block 2 notice when key is missing
+        if: ${{ secrets.FOOTBALL_DATA_API_KEY == '' }}
+        run: echo "FOOTBALL_DATA_API_KEY missing; match import skipped."
+
+      - name: Block 3 - player statistics
+        if: ${{ secrets.API_FOOTBALL_API_KEY != '' }}
+        run: python src/block_3_import_player_statistics.py
+
+      - name: Block 4 - fantasy metrics
+        run: python src/block_4_build_fantasy_metrics.py
+
+      - name: Block 5 - advanced metrics
+        run: python src/block_5_build_advanced_metrics.py
+
+      - name: Block 6 - injuries and transfers
+        if: ${{ secrets.API_FOOTBALL_API_KEY != '' }}
+        run: python src/block_6_import_injuries_transfers.py
+
+      - name: Block 7 - proprietary indexes
+        run: python src/block_7_build_proprietary_indexes.py
+
+      - name: Validate database
+        run: python pipeline.py --validate
+
+      - name: Upload complete database
+        uses: actions/upload-artifact@v4
+        with:
+          name: serie-a-fantacalcio-complete
+          path: |
+            data/database-fantacalcio.sqlite
+            reports/*.json
+          if-no-files-found: warn
+          retention-days: 30
