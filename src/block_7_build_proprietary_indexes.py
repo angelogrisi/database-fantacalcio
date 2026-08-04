@@ -39,13 +39,13 @@ def main():
         SELECT pss.player_id, pss.club_id, pss.minutes, pss.appearances, pss.starts,
                pss.goals, pss.assists, pss.goals_per90, pss.assists_per90,
                pss.yellow_cards, pss.red_cards, pss.clean_sheets,
-               fs.avg_rating, fs.fantasy_average, fs.auction_value_index,
+               fs.average_rating AS avg_rating, fs.fantasy_average, fs.auction_value_index,
                fs.reliability_index AS fantasy_reliability,
                am.offensive_involvement_index, am.chance_creation_index,
                am.ball_progression_index, am.pressure_contribution_index,
                av.availability_pct, av.injury_risk_index
         FROM player_season_stats pss
-        LEFT JOIN fantasy_season_stats fs
+        LEFT JOIN fantasy_player_season fs
           ON fs.player_id=pss.player_id AND fs.season_id=pss.season_id AND fs.club_id=pss.club_id
         LEFT JOIN advanced_player_metrics am
           ON am.player_id=pss.player_id AND am.season_id=pss.season_id AND am.club_id=pss.club_id
@@ -65,7 +65,6 @@ def main():
             starts = r.get('starts') or 0
             minutes = r.get('minutes') or 0
             start_rate = safe_div(starts, apps) or 0
-            min_per_app = safe_div(minutes, apps) or 0
             cards = (r.get('yellow_cards') or 0) + 2*(r.get('red_cards') or 0)
             malus = clamp(100 - min(100, cards*7))
             reliability = r.get('fantasy_reliability') or clamp(0.45*mins[r['player_id']] + 35*start_rate + min(20, apps))
@@ -108,7 +107,6 @@ def main():
             ''', vals)
             total += 1
 
-        # Similarity using available proprietary features, only within same season.
         feats = conn.execute('''SELECT player_id, form_index,reliability_index,continuity_index,
             bonus_index,malus_risk,auction_value_index,tactical_intelligence,creativity,intensity,
             completeness FROM proprietary_player_indexes WHERE season_id=? AND methodology_version=?''',
