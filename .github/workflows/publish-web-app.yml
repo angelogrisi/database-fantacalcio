@@ -1,0 +1,57 @@
+name: Publish Fantacalcio web app
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 5 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_PATH: data/database-fantacalcio.sqlite
+      WEB_DATA_PATH: pages/data/database.json
+      FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      API_FOOTBALL_API_KEY: ${{ secrets.API_FOOTBALL_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Build current database
+        run: |
+          rm -f "$DATABASE_PATH"
+          mkdir -p data reports pages/data
+          python pipeline.py --init
+          python src/block_1_import_entities.py
+          python src/block_2_import_matches.py
+          python src/block_3_import_player_statistics.py
+          python src/block_4_build_fantasy_metrics.py
+          python src/block_5_build_advanced_metrics.py
+          python src/block_6_import_injuries_transfers.py
+          python src/block_7_build_proprietary_indexes.py
+      - name: Export database for browser
+        run: python src/export_web_database_v2.py
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4
