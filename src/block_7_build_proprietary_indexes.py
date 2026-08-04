@@ -41,13 +41,15 @@ def main():
                pss.yellow_cards, pss.red_cards, pss.clean_sheets,
                fs.average_rating AS avg_rating, fs.fantasy_average, fs.auction_value_index,
                fs.reliability_index AS fantasy_reliability,
-               am.offensive_involvement_index, am.chance_creation_index,
-               am.ball_progression_index, am.pressure_contribution_index,
+               am.attacking_involvement_index AS offensive_involvement_index,
+               am.chance_creation_index,
+               am.progression_index AS ball_progression_index,
+               am.pressing_index AS pressure_contribution_index,
                av.availability_pct, av.injury_risk_index
         FROM player_season_stats pss
         LEFT JOIN fantasy_player_season fs
           ON fs.player_id=pss.player_id AND fs.season_id=pss.season_id AND fs.club_id=pss.club_id
-        LEFT JOIN advanced_player_metrics am
+        LEFT JOIN player_advanced_season_metrics am
           ON am.player_id=pss.player_id AND am.season_id=pss.season_id AND am.club_id=pss.club_id
         LEFT JOIN player_availability av
           ON av.player_id=pss.player_id AND av.season_id=pss.season_id AND av.club_id=pss.club_id
