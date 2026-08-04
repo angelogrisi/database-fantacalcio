@@ -33,16 +33,20 @@ jobs:
         run: python src/block_1_import_entities.py
 
       - name: Block 2 - matches
-        if: ${{ secrets.FOOTBALL_DATA_API_KEY != '' }}
-        run: python src/block_2_import_matches.py
-
-      - name: Block 2 notice when key is missing
-        if: ${{ secrets.FOOTBALL_DATA_API_KEY == '' }}
-        run: echo "FOOTBALL_DATA_API_KEY missing; match import skipped."
+        run: |
+          if [ -n "$FOOTBALL_DATA_API_KEY" ]; then
+            python src/block_2_import_matches.py
+          else
+            echo "FOOTBALL_DATA_API_KEY missing; match import skipped."
+          fi
 
       - name: Block 3 - player statistics
-        if: ${{ secrets.API_FOOTBALL_API_KEY != '' }}
-        run: python src/block_3_import_player_statistics.py
+        run: |
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then
+            python src/block_3_import_player_statistics.py
+          else
+            echo "API_FOOTBALL_API_KEY missing; player statistics import skipped."
+          fi
 
       - name: Block 4 - fantasy metrics
         run: python src/block_4_build_fantasy_metrics.py
@@ -51,8 +55,12 @@ jobs:
         run: python src/block_5_build_advanced_metrics.py
 
       - name: Block 6 - injuries and transfers
-        if: ${{ secrets.API_FOOTBALL_API_KEY != '' }}
-        run: python src/block_6_import_injuries_transfers.py
+        run: |
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then
+            python src/block_6_import_injuries_transfers.py
+          else
+            echo "API_FOOTBALL_API_KEY missing; injuries and transfers import skipped."
+          fi
 
       - name: Block 7 - proprietary indexes
         run: python src/block_7_build_proprietary_indexes.py
