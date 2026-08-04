@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>Database Fantacalcio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">SERIE A · 2021–2026</p>
+      <h1>Database Fantacalcio</h1>
+      <p class="subtitle">Ricerca giocatori, confronta stagioni e consulta statistiche e indici proprietari.</p>
+    </div>
+    <div id="summary" class="summary"></div>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <input id="search" type="search" placeholder="Cerca un giocatore…" autocomplete="off">
+      <select id="season"><option value="">Tutte le stagioni</option></select>
+      <select id="club"><option value="">Tutte le squadre</option></select>
+      <select id="role"><option value="">Tutti i ruoli</option><option>P</option><option>D</option><option>C</option><option>A</option></select>
+      <select id="sort">
+        <option value="name">Ordina per nome</option>
+        <option value="fantasy_desc">Fantamedia</option>
+        <option value="goals_desc">Gol</option>
+        <option value="assists_desc">Assist</option>
+        <option value="auction_desc">Valore asta</option>
+      </select>
+    </section>
+
+    <p id="status" class="status">Caricamento archivio…</p>
+    <section id="players" class="grid"></section>
+  </main>
+
+  <dialog id="detail">
+    <button id="close" class="close" aria-label="Chiudi">×</button>
+    <div id="detailContent"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
