@@ -65,6 +65,9 @@ jobs:
       - name: Block 7 - proprietary indexes
         run: python src/block_7_build_proprietary_indexes.py
 
+      - name: Block 8 - lineup readiness
+        run: python src/block_8_build_lineup_readiness.py
+
       - name: Validate database
         run: python pipeline.py --validate
 
