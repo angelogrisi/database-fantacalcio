@@ -31,46 +31,73 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Initialize clean database
         run: |
           rm -f "$DATABASE_PATH"
           mkdir -p data reports pages/data
           python pipeline.py --init
-      - name: Run blocks 1 to 8
+
+      - name: Import clubs players matches and API statistics
         run: |
           python src/block_1_import_entities.py
-          python src/block_2_import_matches.py
-          python src/block_3_import_player_statistics.py
-          python src/block_4_build_fantasy_metrics.py
+          if [ -n "$FOOTBALL_DATA_API_KEY" ]; then python src/block_2_import_matches.py; else echo "Football-data key missing: skipped"; fi
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then
+            python src/block_3_import_player_statistics.py
+          else
+            echo "API-Football key missing: skipped"
+            python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          con=sqlite3.connect('data/database-fantacalcio.sqlite')
+          con.executescript(Path('migrations/003_block_3_player_statistics.sql').read_text())
+          con.close()
+          PY
+          fi
+
+      - name: Build match fantasy metrics
+        run: python src/block_4_build_fantasy_metrics.py
+
+      - name: Import Kaggle Serie A season statistics
+        run: python src/import_kaggle_serie_a_stats.py
+
+      - name: Build advanced injuries indexes and predictions
+        run: |
           python src/block_5_build_advanced_metrics.py
-          python src/block_6_import_injuries_transfers.py
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then python src/block_6_import_injuries_transfers.py; else echo "API-Football injuries skipped"; fi
           python src/block_7_build_proprietary_indexes.py
           python src/block_8_build_lineup_readiness.py
-      - name: Run remaining blocks when available
-        run: |
-          if [ -f src/build_blocks_9_16.py ]; then python src/build_blocks_9_16.py; fi
-      - name: Validate API responses repair links and try secondary source
+          python src/blocks_9_to_16_build_all.py
+
+      - name: Validate API responses links fallback and coverage
         run: python src/pipeline_quality_guard.py
+
       - name: Validate database
         run: python pipeline.py --validate
+
       - name: Export complete data for web app
         run: python src/export_web_database_v2.py
-      - name: Upload database and coverage report
+
+      - name: Upload database and coverage reports
         uses: actions/upload-artifact@v4
         with:
-          name: verified-fantacalcio-database
+          name: verified-fantacalcio-database-with-kaggle
           path: |
             data/database-fantacalcio.sqlite
             reports/*.json
           retention-days: 30
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages
+
       - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v4
