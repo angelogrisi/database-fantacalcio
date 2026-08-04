@@ -49,13 +49,7 @@ jobs:
             python src/block_3_import_player_statistics.py
           else
             echo "API-Football key missing: skipped"
-            python - <<'PY'
-          import sqlite3
-          from pathlib import Path
-          con=sqlite3.connect('data/database-fantacalcio.sqlite')
-          con.executescript(Path('migrations/003_block_3_player_statistics.sql').read_text())
-          con.close()
-          PY
+            python -c "import sqlite3; from pathlib import Path; con=sqlite3.connect('data/database-fantacalcio.sqlite'); con.executescript(Path('migrations/003_block_3_player_statistics.sql').read_text()); con.close()"
           fi
 
       - name: Build match fantasy metrics
