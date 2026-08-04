@@ -31,52 +31,94 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Initialize clean database
         run: |
           rm -f "$DATABASE_PATH"
           mkdir -p data reports pages/data
           python pipeline.py --init
+
       - name: Block 1 - clubs and players
         run: python src/block_1_import_entities.py
+
       - name: Block 2 - matches
         run: |
-          if [ -n "$FOOTBALL_DATA_API_KEY" ]; then python src/block_2_import_matches.py; else echo 'Football-data key missing: skipped'; fi
-      - name: Block 3 - player statistics
+          if [ -n "$FOOTBALL_DATA_API_KEY" ]; then
+            python src/block_2_import_matches.py
+          else
+            echo "Football-data key missing: skipped"
+          fi
+
+      - name: Block 3 - API player statistics
         run: |
-          if [ -n "$API_FOOTBALL_API_KEY" ]; then python src/block_3_import_player_statistics.py; else echo 'API-Football key missing: skipped'; fi
-      - name: Block 4 - fantasy metrics
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then
+            python src/block_3_import_player_statistics.py
+          else
+            echo "API-Football key missing: skipped"
+            python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          con=sqlite3.connect('data/database-fantacalcio.sqlite')
+          con.executescript(Path('migrations/003_block_3_player_statistics.sql').read_text())
+          con.close()
+          PY
+          fi
+
+      - name: Block 4 - match fantasy metrics
         run: python src/block_4_build_fantasy_metrics.py
+
+      - name: Import Kaggle Serie A season statistics
+        run: python src/import_kaggle_serie_a_stats.py
+
       - name: Block 5 - advanced metrics
         run: python src/block_5_build_advanced_metrics.py
+
       - name: Block 6 - injuries and transfers
         run: |
-          if [ -n "$API_FOOTBALL_API_KEY" ]; then python src/block_6_import_injuries_transfers.py; else echo 'API-Football key missing: skipped'; fi
+          if [ -n "$API_FOOTBALL_API_KEY" ]; then
+            python src/block_6_import_injuries_transfers.py
+          else
+            echo "API-Football key missing: skipped"
+          fi
+
       - name: Block 7 - proprietary indexes
         run: python src/block_7_build_proprietary_indexes.py
+
       - name: Block 8 - lineup readiness
         run: python src/block_8_build_lineup_readiness.py
-      - name: Blocks 9-16 - schedule, recommendations, auction, simulations, dashboard, API, health and AI
+
+      - name: Blocks 9-16
         run: python src/blocks_9_to_16_build_all.py
+
+      - name: Quality and coverage report
+        run: python src/pipeline_quality_guard.py
+
       - name: Validate complete database
         run: python pipeline.py --validate
+
       - name: Export database for browser
         run: python src/export_web_database_v2.py
+
       - name: Upload complete database artifact
         uses: actions/upload-artifact@v4
         with:
-          name: database-fantacalcio-blocks-1-16
+          name: database-fantacalcio-complete-with-kaggle
           path: |
             data/database-fantacalcio.sqlite
             reports/*.json
           retention-days: 30
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages
+
       - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v4
