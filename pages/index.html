@@ -2,44 +2,225 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0b1220">
-  <title>Database Fantacalcio</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="Database e strumento avanzato per preparare l'asta del Fantacalcio: filtri, confronto giocatori e costruzione rosa.">
+  <title>FantaLab · Database Fantacalcio</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <div>
-      <p class="eyebrow">SERIE A · 2021–2026</p>
-      <h1>Database Fantacalcio</h1>
-      <p class="subtitle">Ricerca giocatori, confronta stagioni e consulta statistiche e indici proprietari.</p>
+  <a class="skip-link" href="#main-content">Vai ai giocatori</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">FL</div>
+        <div>
+          <p class="eyebrow">SERIE A · DATA SCOUTING</p>
+          <h1>FantaLab</h1>
+          <p class="subtitle">Trova occasioni, confronta profili e costruisci la tua rosa con dati e filtri avanzati.</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="favoritesButton" class="ghost-button" type="button" aria-pressed="false">
+          <span aria-hidden="true">★</span>
+          Preferiti <strong id="favoriteCount">0</strong>
+        </button>
+        <button id="openSquadHeader" class="primary-button" type="button">
+          La mia rosa <strong id="headerSquadCount">0/25</strong>
+        </button>
+      </div>
     </div>
-    <div id="summary" class="summary"></div>
+
+    <div id="summary" class="summary" aria-label="Riepilogo database"></div>
   </header>
 
-  <main>
-    <section class="toolbar">
-      <input id="search" type="search" placeholder="Cerca un giocatore…" autocomplete="off">
-      <select id="season"><option value="">Tutte le stagioni</option></select>
-      <select id="club"><option value="">Tutte le squadre</option></select>
-      <select id="role"><option value="">Tutti i ruoli</option><option>P</option><option>D</option><option>C</option><option>A</option></select>
-      <select id="sort">
-        <option value="name">Ordina per nome</option>
-        <option value="fantasy_desc">Fantamedia</option>
-        <option value="goals_desc">Gol</option>
-        <option value="assists_desc">Assist</option>
-        <option value="auction_desc">Valore asta</option>
-      </select>
+  <section class="search-dock" aria-label="Ricerca rapida">
+    <div class="search-wrap">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input id="search" type="search" placeholder="Cerca giocatore o squadra…" autocomplete="off" aria-label="Cerca giocatore o squadra">
+      <button id="clearSearch" class="icon-button" type="button" aria-label="Cancella ricerca">×</button>
+    </div>
+
+    <div id="roleQuickFilters" class="role-quick-filters" aria-label="Filtro rapido per ruolo">
+      <button class="role-pill role-all is-active" type="button" data-role="" aria-pressed="true">Tutti</button>
+      <button class="role-pill role-p" type="button" data-role="P" aria-pressed="false"><span>P</span> Portieri</button>
+      <button class="role-pill role-d" type="button" data-role="D" aria-pressed="false"><span>D</span> Difensori</button>
+      <button class="role-pill role-c" type="button" data-role="C" aria-pressed="false"><span>C</span> Centrocampisti</button>
+      <button class="role-pill role-a" type="button" data-role="A" aria-pressed="false"><span>A</span> Attaccanti</button>
+    </div>
+
+    <button id="openFilters" class="filter-mobile-button" type="button">
+      Filtri <strong id="mobileFilterCount">0</strong>
+    </button>
+  </section>
+
+  <main id="main-content" class="app-shell">
+    <aside id="filterPanel" class="panel filter-panel" aria-label="Filtri giocatori">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-kicker">RICERCA AVANZATA</p>
+          <h2>Filtri asta</h2>
+        </div>
+        <button id="closeFilters" class="icon-button mobile-only" type="button" aria-label="Chiudi filtri">×</button>
+      </div>
+
+      <div class="filter-stack">
+        <label class="field">
+          <span>Stagione</span>
+          <select id="season"><option value="">Tutte le stagioni</option></select>
+        </label>
+
+        <label class="field">
+          <span>Squadra</span>
+          <select id="club"><option value="">Tutte le squadre</option></select>
+        </label>
+
+        <div class="filter-group">
+          <div class="filter-title-row">
+            <span>Valore consigliato</span>
+            <output id="priceOutput">0–150 crediti</output>
+          </div>
+          <div class="dual-inputs">
+            <label><span class="sr-only">Prezzo minimo</span><input id="priceMin" type="number" min="0" max="500" step="1" value="0" inputmode="numeric"></label>
+            <span>—</span>
+            <label><span class="sr-only">Prezzo massimo</span><input id="priceMax" type="number" min="0" max="500" step="1" value="150" inputmode="numeric"></label>
+          </div>
+        </div>
+
+        <details class="filter-section" open>
+          <summary>Rendimento</summary>
+          <div class="filter-section-body">
+            <label class="field compact"><span>Presenze minime</span><input id="appearancesMin" type="number" min="0" step="1" placeholder="0"></label>
+            <label class="field compact"><span>Minuti minimi</span><input id="minutesMin" type="number" min="0" step="90" placeholder="0"></label>
+            <label class="field compact"><span>Gol minimi</span><input id="goalsMin" type="number" min="0" step="1" placeholder="0"></label>
+            <label class="field compact"><span>Assist minimi</span><input id="assistsMin" type="number" min="0" step="1" placeholder="0"></label>
+            <label class="field compact"><span>xG minimo</span><input id="xgMin" type="number" min="0" step="0.1" placeholder="0"></label>
+            <label class="field compact"><span>xA minimo</span><input id="xaMin" type="number" min="0" step="0.1" placeholder="0"></label>
+          </div>
+        </details>
+
+        <details class="filter-section" open>
+          <summary>Affidabilità e previsione</summary>
+          <div class="filter-section-body">
+            <label class="field compact"><span>Prob. titolare ≥</span><input id="starterMin" type="number" min="0" max="100" step="5" placeholder="0"></label>
+            <label class="field compact"><span>Forma ≥</span><input id="formMin" type="number" min="0" max="100" step="5" placeholder="0"></label>
+            <label class="field compact"><span>Affidabilità ≥</span><input id="reliabilityMin" type="number" min="0" max="100" step="5" placeholder="0"></label>
+            <label class="field compact"><span>Rischio infortunio ≤</span><input id="injuryMax" type="number" min="0" max="100" step="5" placeholder="100"></label>
+          </div>
+        </details>
+
+        <div class="check-list">
+          <label class="check-row"><input id="excludeInjured" type="checkbox"><span>Escludi indisponibili</span></label>
+          <label class="check-row"><input id="onlyComplete" type="checkbox"><span>Solo schede con dati principali</span></label>
+          <label class="check-row"><input id="onlyFavorites" type="checkbox"><span>Solo preferiti</span></label>
+        </div>
+      </div>
+
+      <div class="filter-actions">
+        <button id="resetFilters" class="secondary-button" type="button">Azzera</button>
+        <button id="applyFilters" class="primary-button mobile-only" type="button">Mostra risultati</button>
+      </div>
+    </aside>
+
+    <section class="results-column" aria-labelledby="resultsTitle">
+      <div class="results-toolbar">
+        <div>
+          <p id="status" class="status" aria-live="polite">Caricamento archivio…</p>
+          <h2 id="resultsTitle">Giocatori</h2>
+        </div>
+
+        <div class="results-actions">
+          <label class="sort-label">
+            <span>Ordina</span>
+            <select id="sort">
+              <option value="recommendation_desc">Consigliati</option>
+              <option value="auction_desc">Valore asta</option>
+              <option value="starter_desc">Titolarità</option>
+              <option value="form_desc">Forma</option>
+              <option value="minutes_desc">Minuti</option>
+              <option value="goals_desc">Gol</option>
+              <option value="assists_desc">Assist</option>
+              <option value="xg_desc">xG</option>
+              <option value="name">Nome</option>
+            </select>
+          </label>
+          <div class="view-switch" aria-label="Visualizzazione">
+            <button id="gridView" class="icon-button is-active" type="button" aria-pressed="true" title="Griglia">▦</button>
+            <button id="listView" class="icon-button" type="button" aria-pressed="false" title="Lista">☷</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="activeFilters" class="active-filters" aria-label="Filtri attivi"></div>
+      <section id="players" class="player-grid" aria-live="polite"></section>
+      <div class="load-more-wrap">
+        <button id="loadMore" class="secondary-button" type="button" hidden>Carica altri giocatori</button>
+      </div>
     </section>
 
-    <p id="status" class="status">Caricamento archivio…</p>
-    <section id="players" class="grid"></section>
+    <aside id="squadPanel" class="panel squad-panel" aria-label="Costruzione rosa">
+      <div class="panel-heading">
+        <div>
+          <p class="panel-kicker">TEAM BUILDER</p>
+          <h2>La mia rosa</h2>
+        </div>
+        <button id="closeSquad" class="icon-button mobile-only" type="button" aria-label="Chiudi rosa">×</button>
+      </div>
+
+      <div class="budget-card">
+        <div>
+          <span>Budget residuo</span>
+          <strong id="remainingBudget">500</strong>
+        </div>
+        <label>
+          <span>Budget totale</span>
+          <input id="totalBudget" type="number" min="25" max="5000" value="500" step="10" inputmode="numeric">
+        </label>
+      </div>
+
+      <div class="squad-progress" aria-label="Composizione rosa">
+        <div class="role-progress role-p"><span>P</span><strong id="countP">0/3</strong></div>
+        <div class="role-progress role-d"><span>D</span><strong id="countD">0/8</strong></div>
+        <div class="role-progress role-c"><span>C</span><strong id="countC">0/8</strong></div>
+        <div class="role-progress role-a"><span>A</span><strong id="countA">0/6</strong></div>
+      </div>
+
+      <div id="squadMessage" class="squad-message" aria-live="polite">Aggiungi giocatori per costruire la tua rosa.</div>
+      <div id="squadList" class="squad-list"></div>
+
+      <div class="squad-footer">
+        <button id="clearSquad" class="danger-button" type="button">Svuota rosa</button>
+        <button id="exportSquad" class="secondary-button" type="button">Esporta</button>
+      </div>
+    </aside>
   </main>
 
-  <dialog id="detail">
-    <button id="close" class="close" aria-label="Chiudi">×</button>
+  <button id="mobileSquadBar" class="mobile-squad-bar" type="button">
+    <span>Rosa <strong id="mobileSquadCount">0/25</strong></span>
+    <span><strong id="mobileBudget">500</strong> crediti</span>
+  </button>
+
+  <div id="scrim" class="scrim" hidden></div>
+
+  <dialog id="detail" class="detail-dialog">
+    <button id="close" class="dialog-close" type="button" aria-label="Chiudi">×</button>
     <div id="detailContent"></div>
   </dialog>
+
+  <dialog id="compareDialog" class="compare-dialog">
+    <button id="closeCompare" class="dialog-close" type="button" aria-label="Chiudi confronto">×</button>
+    <div id="compareContent"></div>
+  </dialog>
+
+  <div id="compareBar" class="compare-bar" hidden>
+    <span><strong id="compareCount">0</strong>/2 selezionati</span>
+    <button id="clearCompare" class="ghost-button" type="button">Azzera</button>
+    <button id="openCompare" class="primary-button" type="button" disabled>Confronta</button>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="app.js"></script>
 </body>
